@@ -5,6 +5,7 @@ import threading
 import time
 from datetime import datetime
 import uuid
+import os
 
 app = Flask(__name__)
 
@@ -1797,4 +1798,4 @@ def show_settings():
     )
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
