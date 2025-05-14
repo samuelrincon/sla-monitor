@@ -6,6 +6,10 @@ import time
 from datetime import datetime
 import uuid
 import os
+from dotenv import load_dotenv  # Nuevo
+
+# Cargar variables de entorno
+load_dotenv()
 
 app = Flask(__name__)
 
