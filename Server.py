@@ -734,7 +734,7 @@ QUEUE_TEMPLATE = """
 
 # Template for queue dashboard
 # Template for queue dashboard (corregido)
-QUEUE_DASHBOARD_TEMPLATE = """
+QUEUE_DASHBOARD_TEMPLATE = r"""
 <!DOCTYPE html>
 <html>
 <head>
@@ -1024,7 +1024,7 @@ QUEUE_DASHBOARD_TEMPLATE = """
                             <td>{{ skill.max_delay }}</td>
                             <td>{{ skill.asa }}</td>
                             <td>{{ skill.aqt }}</td>
-                            <td class="sla-cell">{{ skill.service_level }}</td>
+                            <td class="sla-value">{{ skill.service_level }}</td>
                             <td>{{ skill.rt_sl }}</td>
                         {% else %}
                             <td>{{ skill.skill_name }}</td>
@@ -1061,95 +1061,106 @@ QUEUE_DASHBOARD_TEMPLATE = """
             }, 3000);
         }
         
+        function copyToClipboard(text) {
+            return new Promise((resolve, reject) => {
+                // Try modern clipboard API first
+                if (navigator.clipboard) {
+                    navigator.clipboard.writeText(text).then(() => {
+                        resolve(true);
+                    }).catch(err => {
+                        console.error('Modern clipboard failed:', err);
+                        reject(err);
+                    });
+                } else {
+                    // Fallback for older browsers
+                    const textarea = document.createElement('textarea');
+                    textarea.value = text;
+                    textarea.style.position = 'fixed';
+                    textarea.style.top = '0';
+                    textarea.style.left = '0';
+                    textarea.style.width = '2em';
+                    textarea.style.height = '2em';
+                    textarea.style.padding = '0';
+                    textarea.style.border = 'none';
+                    textarea.style.outline = 'none';
+                    textarea.style.boxShadow = 'none';
+                    textarea.style.background = 'transparent';
+                    document.body.appendChild(textarea);
+                    textarea.select();
+                    
+                    try {
+                        const successful = document.execCommand('copy');
+                        document.body.removeChild(textarea);
+                        if (successful) {
+                            resolve(true);
+                        } else {
+                            reject(new Error('Copy command failed'));
+                        }
+                    } catch (err) {
+                        document.body.removeChild(textarea);
+                        reject(err);
+                    }
+                }
+            });
+        }
+        
         async function copySlaDataToClipboard() {
             try {
-                const skills = [];
+                const lowSlaSkills = [];
                 const rows = document.querySelectorAll('#skillsTable tbody tr');
                 
-                // Collect all skills data
+                // Collect SLA data
                 rows.forEach(row => {
-                    const cells = row.querySelectorAll('td');
-                    if (cells.length >= 13) { // Ensure we have enough columns
-                        const skillName = cells[0].textContent.trim();
-                        const slaText = cells[11].querySelector('.sla-cell')?.textContent.trim() || '';
-                        
-                        try {
-                            const slaValue = parseFloat(slaText.replace('%', ''));
-                            if (!isNaN(slaValue)) {
-                                skills.push({
-                                    name: skillName,
-                                    value: slaValue,
-                                    text: slaText
-                                });
-                            }
-                        } catch (e) {
-                            console.error('Error parsing SLA:', e);
+                    const skillName = row.querySelector('td:nth-child(1)')?.textContent.trim();
+                    const slaText = row.querySelector('td.sla-value')?.textContent.trim();
+                    
+                    if (skillName && slaText) {
+                        // Extract numeric value from SLA text
+                        const slaValue = parseFloat(slaText.replace(/[^\d.]/g, ''));
+                        if (!isNaN(slaValue) && slaValue < 80) {
+                            lowSlaSkills.push({
+                                name: skillName,
+                                value: slaText
+                            });
                         }
                     }
                 });
                 
-                // Filter skills with SLA < 80
-                const lowSlaSkills = skills.filter(skill => skill.value < 80);
-                const now = new Date();
-                
-                // Prepare the text to copy
-                let textToCopy = `Voice - Queue\n\n`;
+                // Build the text to copy
+                let textToCopy = "Voice - Queue\n\n";
                 
                 if (lowSlaSkills.length > 0) {
-                    textToCopy += `Skills Below 80% SLA:\n`;
+                    textToCopy += "Team, this is our current SLA view and listed you'll find the impacted skills so far:\n\n";
                     lowSlaSkills.forEach(skill => {
-                        textToCopy += `- ${skill.name}: ${skill.text}\n`;
+                        textToCopy += `-${skill.name} = ${skill.value}\n`;
                     });
-                    textToCopy += `\nAll other skills are meeting SLA targets`;
+                    textToCopy += "\nThe other skills are on target.";
                 } else {
-                    textToCopy += `All skills are meeting SLA targets (80% or above)`;
+                    textToCopy += "All skills are meeting SLA targets (80% or above)";
                 }
                 
-                // Try modern clipboard API first
+                // Copy to clipboard
                 try {
-                    await navigator.clipboard.writeText(textToCopy);
+                    await copyToClipboard(textToCopy);
                     showToast('SLA data copied to clipboard!');
-                    return true;
-                } catch (err) {
-                    console.log('Modern clipboard API failed, trying fallback');
-                }
-                
-                // Fallback method
-                const textarea = document.createElement('textarea');
-                textarea.value = textToCopy;
-                textarea.style.position = 'fixed';
-                textarea.style.left = '-9999px';
-                document.body.appendChild(textarea);
-                textarea.select();
-                
-                try {
-                    const successful = document.execCommand('copy');
-                    document.body.removeChild(textarea);
-                    
-                    if (successful) {
-                        showToast('SLA data copied to clipboard!');
-                        return true;
-                    } else {
-                        throw new Error('Copy command failed');
-                    }
-                } catch (err) {
-                    document.body.removeChild(textarea);
-                    showToast('Failed to copy automatically. Please copy manually.', true);
-                    console.log('Copy this text:', textToCopy);
+                    console.log('Copied to clipboard:', textToCopy);
+                } catch (error) {
+                    console.error('Failed to copy:', error);
+                    showToast('Failed to copy. Please copy manually:', true);
                     prompt('Copy this text:', textToCopy);
-                    return false;
                 }
             } catch (error) {
-                console.error('Error copying SLA data:', error);
-                showToast('Error copying SLA data', true);
-                return false;
+                console.error('Error generating SLA data:', error);
+                showToast('Error generating SLA data', true);
             }
         }
         
         // Initialize after DOM is loaded
         document.addEventListener('DOMContentLoaded', function() {
-            // Add click event to the button
-            document.getElementById('copySlaBtn').addEventListener('click', copySlaDataToClipboard);
+            const copyBtn = document.getElementById('copySlaBtn');
+            if (copyBtn) {
+                copyBtn.addEventListener('click', copySlaDataToClipboard);
+            }
         });
     </script>
 </body>
